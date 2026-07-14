@@ -1,0 +1,4 @@
+dependencies:
+  idf: ">=5.5"
+  waveshare/esp32_p4_nano: "^1.2.0"
+  lvgl/lvgl: "^9.1.0"
