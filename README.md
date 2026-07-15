@@ -2,9 +2,17 @@
 
 OpenRCP is open-source firmware for a hardware remote control panel (RCP) that
 shades Blackmagic Design cameras through an SDI camera-control shield. It runs
-on a Waveshare ESP32-P4-NANO, presents the camera state on its display, reads
+on a Waveshare ESP32-P4 module, presents the camera state on its display, reads
 physical controls, drives a motorized iris fader, and reports preview/program
 tally state.
+
+> [!NOTE]
+> All code in this repository was generated with AI. The main purpose of
+> OpenRCP was to explore what could be built this way, learn from the process,
+> and create a working proof of concept. It should therefore be treated as an
+> experimental learning project, not as production-ready camera-control
+> software. The background and development process are described in the
+> [OpenRCP project article](https://jonasvanoyenbrugge.be/#/project/openrcp).
 
 > [!IMPORTANT]
 > This repository contains firmware for a custom hardware prototype, not a
@@ -26,25 +34,65 @@ Some model fields and display pages are prepared for future controls. The
 current physical mapping is defined in
 `components/control_mapper/src/control_mapper.c`.
 
-## Required hardware
+## Hardware architecture
 
-- Waveshare ESP32-P4-NANO development board with its display connected.
-- A compatible Blackmagic Design 3G-SDI Arduino Shield, connected over I2C.
-- Two I2C button input boards at addresses `0x23` and `0x24`.
-- Seven quadrature rotary encoders with push switches.
-- Four active-low camera-selection push buttons.
-- A motorized fader, a suitable H-bridge/motor driver, and an analog feedback
-  connection. The motor must not be driven directly from an ESP32 GPIO.
-- A stable supply sized for the ESP32 board, display, shield, input boards, and
-  fader motor. Join grounds where required by the chosen driver design.
+The prototype is built around the following parts, listed in logical signal
+order from user input to camera-control output.
 
-The code enables internal pull-ups for the camera buttons and rotary encoder
-switches. Confirm that external hardware does not drive these pins above the
-ESP32-P4 I/O voltage.
+### 1. Processing and display
 
-## Hardware configuration
+- **MCU:** Waveshare ESP32-P4 module, used through the Waveshare ESP32-P4-NANO
+  board support package in `main/idf_component.yml`.
+- **Display:** Waveshare 4-inch DSI LCD. LVGL renders the interface, while the
+  Waveshare board support package initializes the DSI display and backlight.
 
-The firmware is currently configured for the following prototype wiring.
+The firmware is compiled for the `esp32p4` target and relies on external PSRAM
+for display buffering. A different ESP32-P4 carrier or display may require BSP,
+pin, memory, and display initialization changes.
+
+### 2. Operator controls
+
+- **Rotary encoders:** seven Bourns `PEC12R-4015F-S0024` incremental encoders
+  with push switches. Their A/B signals and push switches connect directly to
+  ESP32-P4 GPIOs.
+- **Camera buttons:** four active-low momentary switches connected directly to
+  ESP32-P4 GPIOs.
+- **Additional buttons:** two groups of six buttons read through two `PCF8574P`
+  I/O expanders on the shared I2C bus. Their configured addresses are `0x23`
+  and `0x24`, with separate interrupt signals to the MCU.
+
+The firmware enables internal pull-ups for the direct camera buttons and
+encoder push switches. The encoder A/B inputs also use pull-ups. Confirm that
+external hardware never drives an ESP32-P4 input above its permitted I/O
+voltage.
+
+### 3. Motorized iris control
+
+- **Motorized slide potentiometer:** Bourns `PSM60-081A-103B2`. Its wiper is
+  sampled by an ESP32-P4 ADC input to determine the physical fader position.
+- **Motor driver:** `TB6612FNG` dual H-bridge driver. One bridge is controlled
+  with PWM, two direction inputs, and standby. The motor must not be connected
+  directly to ESP32-P4 GPIOs.
+
+The logic supply, motor supply, grounding, and current capability must match
+the chosen implementation. Motor noise should be kept out of the analog fader
+feedback path through appropriate layout, decoupling, and grounding.
+
+### 4. Camera-control interface
+
+- **Interface:** a compatible Blackmagic Design 3G-SDI Arduino Shield.
+- **Connection:** shared 100 kHz I2C bus.
+- **Purpose:** the firmware sends Blackmagic camera-control packets for the
+  selected camera and reads tally information returned by the shield.
+
+The controller, I/O expanders, motor driver, display, and shield require a
+stable power system with a shared reference where the circuit design requires
+it. Verify every device's supply and logic levels before assembly.
+
+## Wiring configuration
+
+The firmware is currently configured for the following proof-of-concept
+wiring. This is a firmware pin map, not a complete electrical schematic.
 
 | Function | Connection |
 | --- | --- |
@@ -55,10 +103,10 @@ The firmware is currently configured for the following prototype wiring.
 | Right button panel | address `0x23`, interrupt GPIO 6 |
 | Left button panel | address `0x24`, interrupt GPIO 5 |
 | Camera buttons 1–4 | GPIO 12, 10, 11, 9 |
-| Fader motor PWM / AIN2 / AIN1 / standby | GPIO 29 / 28 / 27 / 26 |
-| Fader potentiometer | GPIO 23 (ADC) |
+| TB6612FNG PWM / AIN2 / AIN1 / standby | GPIO 29 / 28 / 27 / 26 |
+| Bourns PSM60 fader wiper | GPIO 23 (ADC) |
 
-Rotary encoder pins are:
+The Bourns PEC12R encoder pins are:
 
 | Control | A | B | Push |
 | --- | ---: | ---: | ---: |
@@ -99,39 +147,6 @@ Managed components are declared in `main/idf_component.yml`; `idf.py` downloads
 them on the first configure/build. The important direct dependencies are the
 Waveshare ESP32-P4-NANO BSP and LVGL 9.
 
-## Build and flash
-
-From an ESP-IDF-enabled terminal:
-
-```sh
-git clone <your-repository-url>
-cd OpenRCP
-idf.py set-target esp32p4
-idf.py build
-idf.py -p <serial-port> flash monitor
-```
-
-Replace `<your-repository-url>` and `<serial-port>` with the repository URL and
-the board's serial port. Exit the serial monitor with `Ctrl+]`.
-
-The included development container provides an ESP-IDF environment. USB access
-from a container depends on the host OS and container runtime; flashing from a
-native ESP-IDF terminal may be simpler on Windows or macOS.
-
-## Controls
-
-- Camera buttons 1–3 select cameras 1–3. In the current mapping, physical
-  camera button 4 is reserved as shift and does not select camera 4.
-- The right button panel controls gain down/up, white balance down/up, and tint
-  down/up. The left panel is detected but currently unassigned.
-- Turning an encoder adjusts its labelled color or black-level value. Encoder
-  pushes provide tint, white-balance, and gain shortcuts.
-- Holding a shading encoder for three seconds resets that encoder's value.
-- Holding camera button 1, 2, or 3 for three seconds resets the selected
-  camera's shading values.
-- Holding white-balance down and up together for three seconds resets cameras
-  1–4 and transmits their default state.
-
 ## Project layout
 
 | Path | Purpose |
@@ -144,17 +159,6 @@ native ESP-IDF terminal may be simpler on Windows or macOS.
 | `components/openrcp_model/` | Per-camera state model |
 | `components/openrcp_app/` | Application actions and state updates |
 | `components/openrcp_display/` | LVGL user interface |
-
-## Troubleshooting
-
-- **Shield or panels are missing:** check the boot log's I2C scan, wiring,
-  common ground, pull-ups, and configured addresses.
-- **The fader moves in the wrong direction:** remove motor power, then verify the
-  driver wiring and `MOTOR_DIRECTION_INVERTED` before retrying.
-- **The display does not start:** confirm the exact Waveshare board/display
-  revision and that the BSP dependency matches it.
-- **A control is reversed:** adjust `invert_direction` for that encoder in
-  `controls_config.h`.
 
 ## License
 

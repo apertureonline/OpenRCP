@@ -11,5 +11,6 @@
     "--query-driver=**",
     "--compile-commands-dir=${workspaceFolder}/build"
   ],
-  "idf.flashType": "JTAG"
+  "idf.flashType": "JTAG",
+  "idf.currentSetup": "C:\\Users\\jonas\\esp\\v5.5.1\\esp-idf"
 }
