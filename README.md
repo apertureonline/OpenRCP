@@ -2,9 +2,9 @@
 
 OpenRCP is open-source firmware for a hardware remote control panel (RCP) that
 shades Blackmagic Design cameras through an SDI camera-control shield. It runs
-on a Waveshare ESP32-P4 module, presents the camera state on its display, reads
-physical controls, drives a motorized iris fader, and reports preview/program
-tally state.
+on a custom PCB built around a Waveshare ESP32-P4 module, presents the camera
+state on its display, reads physical controls, drives a motorized iris fader,
+and reports preview/program tally state.
 
 > [!NOTE]
 > All code in this repository was generated with AI. The main purpose of
@@ -41,14 +41,22 @@ order from user input to camera-control output.
 
 ### 1. Processing and display
 
-- **MCU:** Waveshare ESP32-P4 module, used through the Waveshare ESP32-P4-NANO
-  board support package in `main/idf_component.yml`.
+- **Main board:** a custom PCB designed around a Waveshare ESP32-P4 module. The
+  OpenRCP prototype does not use the Waveshare ESP32-P4-NANO development board.
+- **MCU module:** Waveshare ESP32-P4 module mounted on the custom PCB.
 - **Display:** Waveshare 4-inch DSI LCD. LVGL renders the interface, while the
   Waveshare board support package initializes the DSI display and backlight.
 
 The firmware is compiled for the `esp32p4` target and relies on external PSRAM
-for display buffering. A different ESP32-P4 carrier or display may require BSP,
-pin, memory, and display initialization changes.
+for display buffering. It currently uses the Waveshare ESP32-P4-NANO board
+support package declared in `main/idf_component.yml` because that package
+provides the required display support. This software dependency does not mean
+that the prototype uses the ESP32-P4-NANO development board.
+
+A Waveshare ESP32-P4 development board can also be used for development or as
+the basis of another build, provided the display and external controls are
+wired to match the firmware configuration. A different carrier board or
+display may require pin, memory, and display-initialization changes.
 
 ### 2. Operator controls
 
